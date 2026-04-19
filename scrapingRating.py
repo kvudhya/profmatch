@@ -9,8 +9,9 @@ from bs4 import BeautifulSoup
 # Goal:
 # 1. Scrape Rutgers CS professor names from Rutgers CS site
 # 2. Search each professor on Rate My Professors
-# 3. Pull rating, difficulty, would take again, #ratings
-# 4. Save everything to CSV
+# 3. Pull professor-level data
+# 4. Pull review-level data
+# 5. Save both to CSV
 # =========================================================
 
 HEADERS = {
@@ -22,12 +23,10 @@ HEADERS = {
 }
 
 TIMEOUT = 15
-OUTPUT_FILE = "rutgers_cs_rmp_ratings.csv"
+PROFESSOR_OUTPUT_FILE = "rutgers_cs_rmp_ratings.csv"
+REVIEWS_OUTPUT_FILE = "rutgers_cs_rmp_reviews.csv"
 
-# Rutgers NB / State University of New Jersey search page on RMP
-# This school id is based on the public Rutgers RMP search page.
 RMP_SCHOOL_ID = 825
-
 RUTGERS_CS_PROFESSORS_URL = "https://www.cs.rutgers.edu/people/professors"
 
 
@@ -74,40 +73,26 @@ def normalize_name(name):
 # step 1: get Rutgers CS professors
 # -------------------------
 def get_rutgers_cs_professors():
-    """
-    Scrapes professor names from Rutgers CS professors page.
-    """
     response = requests.get(RUTGERS_CS_PROFESSORS_URL, headers=HEADERS, timeout=TIMEOUT)
     response.raise_for_status()
 
     soup = BeautifulSoup(response.text, "html.parser")
-
     professor_names = set()
 
-    # Rutgers page usually has professor names inside headings
     for tag in soup.find_all(["h2", "h3", "h4"]):
         name = clean_text(tag.get_text(" ", strip=True))
 
-        # basic filtering so we don't accidentally grab random headings
         if len(name.split()) >= 2 and len(name) < 60:
             if not any(word in name.lower() for word in ["information", "professors", "close"]):
                 professor_names.add(name)
 
-    # sort for cleaner output
-    professor_names = sorted(professor_names)
-
-    return professor_names
+    return sorted(professor_names)
 
 
 # -------------------------
 # step 2: search professor on RMP
 # -------------------------
 def search_rmp_professor(professor_name):
-    """
-    Searches for a professor in Rutgers RMP search results.
-    Returns best matching professor page URL if found.
-    """
-
     search_url = f"https://www.ratemyprofessors.com/search/professors/{RMP_SCHOOL_ID}"
     params = {"q": professor_name}
 
@@ -116,7 +101,6 @@ def search_rmp_professor(professor_name):
 
     soup = BeautifulSoup(response.text, "html.parser")
 
-    # first try actual links
     professor_links = []
     for a in soup.find_all("a", href=True):
         href = a["href"]
@@ -126,21 +110,15 @@ def search_rmp_professor(professor_name):
             full_url = href if href.startswith("http") else "https://www.ratemyprofessors.com" + href
             professor_links.append((text, full_url))
 
-    # try to find the best text match
     target = normalize_name(professor_name)
 
     for text, url in professor_links:
         if target in normalize_name(text) or normalize_name(text) in target:
             return url
 
-    # fallback:
-    # sometimes the search page text contains the professor name even if
-    # structure is weird, so try regex on raw html for /professor/ links
     html = response.text
     id_matches = re.findall(r'\/professor\/(\d+)', html)
-
     if id_matches:
-        # just return the first hit if there is at least something
         return f"https://www.ratemyprofessors.com/professor/{id_matches[0]}"
 
     return None
@@ -150,9 +128,6 @@ def search_rmp_professor(professor_name):
 # step 3: scrape professor page
 # -------------------------
 def scrape_rmp_professor_page(professor_url):
-    """
-    Scrapes one Rate My Professors professor page.
-    """
     response = requests.get(professor_url, headers=HEADERS, timeout=TIMEOUT)
     response.raise_for_status()
 
@@ -169,12 +144,10 @@ def scrape_rmp_professor_page(professor_url):
         "rmp_url": professor_url
     }
 
-    # professor name
     h1 = soup.find("h1")
     if h1:
         data["rmp_name"] = clean_text(h1.get_text(" ", strip=True))
 
-    # department
     dept_match = re.search(
         r"Professor in the (.+?) department at Rutgers",
         page_text,
@@ -183,7 +156,6 @@ def scrape_rmp_professor_page(professor_url):
     if dept_match:
         data["department"] = clean_text(dept_match.group(1))
 
-    # would take again
     take_again_match = re.search(
         r"(\d+)%\s*Would take again",
         page_text,
@@ -192,7 +164,6 @@ def scrape_rmp_professor_page(professor_url):
     if take_again_match:
         data["would_take_again_pct"] = safe_float(take_again_match.group(1))
 
-    # difficulty
     difficulty_match = re.search(
         r"(\d+(?:\.\d+)?)\s*Level of Difficulty",
         page_text,
@@ -201,8 +172,6 @@ def scrape_rmp_professor_page(professor_url):
     if difficulty_match:
         data["difficulty"] = safe_float(difficulty_match.group(1))
 
-    # quality and rating count often show up together on search pages / page text
-    # try multiple patterns because RMP HTML can be annoying
     quality_match = re.search(
         r"Quality\s*(\d(?:\.\d+)?)",
         page_text,
@@ -219,7 +188,92 @@ def scrape_rmp_professor_page(professor_url):
     if ratings_match:
         data["num_ratings"] = safe_int(ratings_match.group(1))
 
-    return data
+    return data, soup, page_text
+
+
+# -------------------------
+# step 4: scrape review-level data
+# reviews(review_id PK, section_id FK, review_text,
+#         helpfulness_rating, difficulty_rating,
+#         grade_received, timestamp)
+# -------------------------
+def scrape_reviews_from_page(soup, page_text, section_id):
+    review_rows = []
+
+    # Try to find review blocks
+    possible_review_blocks = soup.find_all(["div", "li", "article"])
+
+    review_counter = 1
+
+    for block in possible_review_blocks:
+        block_text = clean_text(block.get_text(" ", strip=True))
+
+        # basic filter so we don't collect random junk
+        if len(block_text) < 40:
+            continue
+
+        # review text
+        review_text = None
+        if 40 <= len(block_text) <= 1500:
+            review_text = block_text
+
+        if not review_text:
+            continue
+
+        # difficulty inside each review block if present
+        difficulty_rating = None
+        difficulty_match = re.search(
+            r"Difficulty\s*[:\-]?\s*(\d(?:\.\d+)?)",
+            block_text,
+            flags=re.IGNORECASE
+        )
+        if difficulty_match:
+            difficulty_rating = safe_float(difficulty_match.group(1))
+
+        # helpfulness rating may not actually exist on RMP pages anymore
+        helpfulness_rating = None
+        helpful_match = re.search(
+            r"Helpful\s*[:\-]?\s*(\d+(?:\.\d+)?)",
+            block_text,
+            flags=re.IGNORECASE
+        )
+        if helpful_match:
+            helpfulness_rating = safe_float(helpful_match.group(1))
+
+        # grade received if present
+        grade_received = None
+        grade_match = re.search(
+            r"Grade\s*[:\-]?\s*([A-F][+-]?)",
+            block_text,
+            flags=re.IGNORECASE
+        )
+        if grade_match:
+            grade_received = clean_text(grade_match.group(1))
+
+        # timestamp if present
+        timestamp = None
+        time_match = re.search(
+            r"((Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2}(?:,\s+\d{4})?)",
+            block_text,
+            flags=re.IGNORECASE
+        )
+        if time_match:
+            timestamp = clean_text(time_match.group(1))
+
+        review_rows.append(
+            {
+                "review_id": review_counter,
+                "section_id": section_id,
+                "review_text": review_text,
+                "helpfulness_rating": helpfulness_rating,
+                "difficulty_rating": difficulty_rating,
+                "grade_received": grade_received,
+                "timestamp": timestamp
+            }
+        )
+        review_counter += 1
+
+    return review_rows
 
 
 # -------------------------
@@ -229,12 +283,14 @@ def build_rutgers_cs_rmp_dataset():
     professor_names = get_rutgers_cs_professors()
     print(f"Found {len(professor_names)} Rutgers CS professors")
 
-    rows = []
+    professor_rows = []
+    all_review_rows = []
 
     for i, professor_name in enumerate(professor_names, start=1):
         print(f"[{i}/{len(professor_names)}] Searching RMP for: {professor_name}")
 
         row = {
+            "section_id": i,   # using this like your FK target
             "rutgers_name": professor_name,
             "rmp_name": None,
             "department": None,
@@ -250,30 +306,43 @@ def build_rutgers_cs_rmp_dataset():
             rmp_url = search_rmp_professor(professor_name)
 
             if rmp_url:
-                rmp_data = scrape_rmp_professor_page(rmp_url)
+                rmp_data, soup, page_text = scrape_rmp_professor_page(rmp_url)
                 row.update(rmp_data)
                 row["found_on_rmp"] = True
+
+                review_rows = scrape_reviews_from_page(soup, page_text, i)
+                all_review_rows.extend(review_rows)
+
             else:
                 print(f"   No RMP page found for {professor_name}")
 
         except Exception as e:
             print(f"   Error with {professor_name}: {e}")
 
-        rows.append(row)
+        professor_rows.append(row)
 
-        # be a little nicer to the site
         time.sleep(1)
 
-    df = pd.DataFrame(rows)
-    df.to_csv(OUTPUT_FILE, index=False)
-    print(f"\nSaved file to: {OUTPUT_FILE}")
+    professors_df = pd.DataFrame(professor_rows)
+    reviews_df = pd.DataFrame(all_review_rows)
 
-    return df
+    professors_df.to_csv(PROFESSOR_OUTPUT_FILE, index=False)
+    reviews_df.to_csv(REVIEWS_OUTPUT_FILE, index=False)
+
+    print(f"\nSaved professor file to: {PROFESSOR_OUTPUT_FILE}")
+    print(f"Saved review file to: {REVIEWS_OUTPUT_FILE}")
+
+    return professors_df, reviews_df
 
 
 # -------------------------
 # run
 # -------------------------
 if __name__ == "__main__":
-    df = build_rutgers_cs_rmp_dataset()
-    print(df.head(10))
+    professors_df, reviews_df = build_rutgers_cs_rmp_dataset()
+
+    print("\nProfessor DataFrame:")
+    print(professors_df.head(10))
+
+    print("\nReviews DataFrame:")
+    print(reviews_df.head(10))

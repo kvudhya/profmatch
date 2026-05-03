@@ -1,8 +1,8 @@
-import psycopg
+import psycopg2
 import pandas as pd
 from sklearn.decomposition import TruncatedSVD
 
-conn = psycopg.connect(
+conn = psycopg2.connect(
     dbname="profmatch_db",
     user="parvezabdul",
     host="localhost",

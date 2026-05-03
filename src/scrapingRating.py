@@ -14,31 +14,17 @@ from bs4 import BeautifulSoup
 # 5. Save both to CSV
 # =========================================================
 
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/124.0.0.0 Safari/537.36"
-    )
-}
+from utils import clean_text, get_rutgers_cs_professors, DEFAULT_HEADERS, DEFAULT_TIMEOUT
 
-TIMEOUT = 15
 PROFESSOR_OUTPUT_FILE = "rutgers_cs_rmp_ratings.csv"
 REVIEWS_OUTPUT_FILE = "rutgers_cs_rmp_reviews.csv"
 
 RMP_SCHOOL_ID = 825
-RUTGERS_CS_PROFESSORS_URL = "https://www.cs.rutgers.edu/people/professors"
 
 
 # -------------------------
 # small helper functions
 # -------------------------
-def clean_text(text):
-    if text is None:
-        return ""
-    return re.sub(r"\s+", " ", str(text)).strip()
-
-
 def safe_float(text, default=None):
     if text is None:
         return default
@@ -70,33 +56,13 @@ def normalize_name(name):
 
 
 # -------------------------
-# step 1: get Rutgers CS professors
-# -------------------------
-def get_rutgers_cs_professors():
-    response = requests.get(RUTGERS_CS_PROFESSORS_URL, headers=HEADERS, timeout=TIMEOUT)
-    response.raise_for_status()
-
-    soup = BeautifulSoup(response.text, "html.parser")
-    professor_names = set()
-
-    for tag in soup.find_all(["h2", "h3", "h4"]):
-        name = clean_text(tag.get_text(" ", strip=True))
-
-        if len(name.split()) >= 2 and len(name) < 60:
-            if not any(word in name.lower() for word in ["information", "professors", "close"]):
-                professor_names.add(name)
-
-    return sorted(professor_names)
-
-
-# -------------------------
 # step 2: search professor on RMP
 # -------------------------
 def search_rmp_professor(professor_name):
     search_url = f"https://www.ratemyprofessors.com/search/professors/{RMP_SCHOOL_ID}"
     params = {"q": professor_name}
 
-    response = requests.get(search_url, headers=HEADERS, params=params, timeout=TIMEOUT)
+    response = requests.get(search_url, headers=DEFAULT_HEADERS, params=params, timeout=DEFAULT_TIMEOUT)
     response.raise_for_status()
 
     soup = BeautifulSoup(response.text, "html.parser")
@@ -128,7 +94,7 @@ def search_rmp_professor(professor_name):
 # step 3: scrape professor page
 # -------------------------
 def scrape_rmp_professor_page(professor_url):
-    response = requests.get(professor_url, headers=HEADERS, timeout=TIMEOUT)
+    response = requests.get(professor_url, headers=DEFAULT_HEADERS, timeout=DEFAULT_TIMEOUT)
     response.raise_for_status()
 
     soup = BeautifulSoup(response.text, "html.parser")
@@ -200,7 +166,6 @@ def scrape_rmp_professor_page(professor_url):
 def scrape_reviews_from_page(soup, page_text, section_id):
     review_rows = []
 
-    # Try to find review blocks
     possible_review_blocks = soup.find_all(["div", "li", "article"])
 
     review_counter = 1
@@ -208,11 +173,9 @@ def scrape_reviews_from_page(soup, page_text, section_id):
     for block in possible_review_blocks:
         block_text = clean_text(block.get_text(" ", strip=True))
 
-        # basic filter so we don't collect random junk
         if len(block_text) < 40:
             continue
 
-        # review text
         review_text = None
         if 40 <= len(block_text) <= 1500:
             review_text = block_text
@@ -220,7 +183,6 @@ def scrape_reviews_from_page(soup, page_text, section_id):
         if not review_text:
             continue
 
-        # difficulty inside each review block if present
         difficulty_rating = None
         difficulty_match = re.search(
             r"Difficulty\s*[:\-]?\s*(\d(?:\.\d+)?)",
@@ -230,7 +192,6 @@ def scrape_reviews_from_page(soup, page_text, section_id):
         if difficulty_match:
             difficulty_rating = safe_float(difficulty_match.group(1))
 
-        # helpfulness rating may not actually exist on RMP pages anymore
         helpfulness_rating = None
         helpful_match = re.search(
             r"Helpful\s*[:\-]?\s*(\d+(?:\.\d+)?)",
@@ -240,7 +201,6 @@ def scrape_reviews_from_page(soup, page_text, section_id):
         if helpful_match:
             helpfulness_rating = safe_float(helpful_match.group(1))
 
-        # grade received if present
         grade_received = None
         grade_match = re.search(
             r"Grade\s*[:\-]?\s*([A-F][+-]?)",
@@ -250,7 +210,6 @@ def scrape_reviews_from_page(soup, page_text, section_id):
         if grade_match:
             grade_received = clean_text(grade_match.group(1))
 
-        # timestamp if present
         timestamp = None
         time_match = re.search(
             r"((Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2}(?:,\s+\d{4})?)",
@@ -290,7 +249,7 @@ def build_rutgers_cs_rmp_dataset():
         print(f"[{i}/{len(professor_names)}] Searching RMP for: {professor_name}")
 
         row = {
-            "section_id": i,   # using this like your FK target
+            "section_id": i,
             "rutgers_name": professor_name,
             "rmp_name": None,
             "department": None,

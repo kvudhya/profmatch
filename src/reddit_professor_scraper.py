@@ -1,32 +1,24 @@
 import csv
 import json
-import re
 import time
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 from typing import Iterable, List, Optional
 
 import requests
-from bs4 import BeautifulSoup
 
-FACULTY_URL = "https://www.cs.rutgers.edu/people/directory.php?type=faculty"
-DEFAULT_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/124.0.0.0 Safari/537.36"
-    )
-}
-DEFAULT_TIMEOUT = 20
+from utils import (
+    clean_text,
+    fetch_html,
+    parse_faculty_directory,
+    FacultyMember,
+    DEFAULT_HEADERS,
+    DEFAULT_TIMEOUT,
+    RUTGERS_CS_FACULTY_URL,
+)
+
 MAX_POSTS_PER_PROFESSOR = 10
 SLEEP_SECONDS = 1.0
-
-
-@dataclass
-class FacultyMember:
-    name: str
-    faculty_group: str
-    email: Optional[str] = None
 
 
 @dataclass
@@ -43,54 +35,6 @@ class RedditPostResult:
     num_comments: Optional[int] = None
     snippet: str = ""
     search_query: str = ""
-
-
-def clean_text(text: Optional[str]) -> str:
-    if text is None:
-        return ""
-    text = str(text)
-    text = re.sub(r"\s+", " ", text)
-    return text.strip()
-
-
-def fetch_html(url: str) -> str:
-    response = requests.get(url, headers=DEFAULT_HEADERS, timeout=DEFAULT_TIMEOUT)
-    response.raise_for_status()
-    return response.text
-
-
-def parse_faculty_directory(html: str) -> List[FacultyMember]:
-    soup = BeautifulSoup(html, "html.parser")
-    members: List[FacultyMember] = []
-
-    current_group = None
-    for tag in soup.find_all(["h3", "a"]):
-        text = clean_text(tag.get_text(" ", strip=True))
-        if text in {"Professors", "Teaching Faculty", "Part Time Lecturers"}:
-            current_group = text
-            continue
-
-        if current_group in {"Professors", "Teaching Faculty"} and tag.name == "a":
-            href = tag.get("href", "")
-            if not href or href.startswith("#"):
-                continue
-            if text in {"Image", "Home", "Search"}:
-                continue
-            if len(text.split()) < 2:
-                continue
-            if any(token in text for token in ["rutgers.edu", "cs.rutgers.edu"]):
-                continue
-
-            members.append(FacultyMember(name=text, faculty_group=current_group))
-
-    deduped = []
-    seen = set()
-    for member in members:
-        key = (member.name.lower(), member.faculty_group)
-        if key not in seen:
-            deduped.append(member)
-            seen.add(key)
-    return deduped
 
 
 def build_search_query(professor_name: str) -> str:
@@ -144,7 +88,7 @@ def normalize_result(professor: FacultyMember, post: dict, query: str) -> Reddit
 
 
 def scrape_all_professor_posts() -> List[RedditPostResult]:
-    faculty_html = fetch_html(FACULTY_URL)
+    faculty_html = fetch_html(RUTGERS_CS_FACULTY_URL)
     faculty_members = parse_faculty_directory(faculty_html)
     all_rows: List[RedditPostResult] = []
 

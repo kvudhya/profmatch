@@ -7,7 +7,7 @@ from typing import Iterable, List, Optional
 
 import requests
 
-from utils import (
+from src.utils.utils import (
     clean_text,
     fetch_html,
     parse_faculty_directory,

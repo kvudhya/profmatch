@@ -14,7 +14,7 @@ from bs4 import BeautifulSoup
 # 5. Save both to CSV
 # =========================================================
 
-from utils import clean_text, get_rutgers_cs_professors, DEFAULT_HEADERS, DEFAULT_TIMEOUT
+from src.utils.utils import clean_text, get_rutgers_cs_professors, DEFAULT_HEADERS, DEFAULT_TIMEOUT
 
 PROFESSOR_OUTPUT_FILE = "rutgers_cs_rmp_ratings.csv"
 REVIEWS_OUTPUT_FILE = "rutgers_cs_rmp_reviews.csv"

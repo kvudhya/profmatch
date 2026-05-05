@@ -3,7 +3,7 @@ import pandas as pd
 from sklearn.decomposition import TruncatedSVD
 
 
-conn = sqlite3.connect("profmatch.db")
+conn = sqlite3.connect("../profmatch.db")
 
 query = """
 SELECT

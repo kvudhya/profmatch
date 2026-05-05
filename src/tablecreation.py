@@ -1,5 +1,5 @@
 import sqlite3
-conn = sqlite3.connect("profmatch.db")
+conn = sqlite3.connect("../profmatch.db")
 cursor = conn.cursor()
 cursor.execute("PRAGMA foreign_keys = ON;")
 #incase already exists

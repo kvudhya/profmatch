@@ -26,7 +26,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import requests
 
-from utils import (
+from src.utils.utils import (
     Professor,
     clean_text,
     normalize,

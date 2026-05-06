@@ -1,60 +1,19 @@
-import psycopg2
+import sqlite3
 import pandas as pd
 from sklearn.decomposition import TruncatedSVD
 
-conn = psycopg2.connect(
-    dbname="profmatch_db",
-    user="parvezabdul",
-    host="localhost",
-    port=5432
-)
+conn=sqlite3.connect("profmatch.db")
 
-query = """
-SELECT
-    r.student_id,
-    s.professor_id,
-    r.rating
-FROM rating r
-JOIN section s
-    ON r.section_id = s.section_id
-ORDER BY r.student_id, s.professor_id;
-"""
+row = pd.read_sql(
+    """SELECT student_id, rating, professor_name FROM rating 
+        JOIN Section s ON rating.section_id = s.section_id
+        JOIN Professor p ON s.professor_id = p.professor_id
+        WHERE student_id = 80
+        ORDER BY rating DESC
+        
+""", conn)
+prof_name = row.loc[0, "professor_name"]
 
-df = pd.read_sql(query, conn)
+prof_data = pd.read_csv("Data/rutgers_cs_rmp_ratings.csv")
 
-print("Joined data:")
-print(df)
-
-interaction_matrix = df.pivot_table(
-    index="student_id",
-    columns="professor_id",
-    values="rating"
-)
-
-print("\nInteraction matrix:")
-print(interaction_matrix)
-
-interaction_matrix_filled = interaction_matrix.fillna(0)
-
-print("\nFilled interaction matrix:")
-print(interaction_matrix_filled)
-
-interaction_matrix_filled.to_csv("interaction_matrix.csv")
-print("\nSaved interaction_matrix.csv")
-
-svd = TruncatedSVD(n_components=2, random_state=42)
-latent_matrix = svd.fit_transform(interaction_matrix_filled)
-
-latent_df = pd.DataFrame(
-    latent_matrix,
-    index=interaction_matrix_filled.index,
-    columns=["latent_feature_1", "latent_feature_2"]
-)
-
-print("\nLatent matrix:")
-print(latent_df)
-
-latent_df.to_csv("latent_matrix.csv")
-print("\nSaved latent_matrix.csv")
-
-conn.close()
+print(prof_data[prof_data["rmp_name"] == prof_name][["difficulty","quality", "would_take_again_pct"]])

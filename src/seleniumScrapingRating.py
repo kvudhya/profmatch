@@ -200,9 +200,7 @@ def scrape_rmp_professor_page(driver, professor_url):
     return data, soup, page_text
 
 
-# -------------------------
-# Step 4: Scrape review-level data
-# -------------------------
+
 def scrape_reviews_from_page(soup, page_text, section_id):
     review_rows = []
     review_counter = 1
@@ -271,9 +269,7 @@ def scrape_reviews_from_page(soup, page_text, section_id):
     return review_rows
 
 
-# -------------------------
-# Main Pipeline
-# -------------------------
+
 def build_rutgers_cs_rmp_dataset():
     BASE_DIR = Path("Data")
     BASE_DIR.mkdir(exist_ok=True)  # Ensures the Data folder exists

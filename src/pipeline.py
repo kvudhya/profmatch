@@ -368,7 +368,7 @@ class ProfessorRecommender:
             pd.read_sql("SELECT professor_id, professor_name FROM professor", self.conn).values
         )
 
-        explained = svd.explained_variance_ratio_.sum()
+        explained = svd.explained_variance_ratio_.sum() #we get culmulitive explained variance
         print(f"[3/3] SVD model trained  (k={k}, explained variance={explained:.1%}).")
 
     def recommend(self, student_id: int, top_n: int = 5) -> pd.DataFrame:
@@ -392,9 +392,7 @@ class ProfessorRecommender:
         return rec[["professor_id", "professor_name", "predicted_rating"]].head(top_n)
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# ENTRY POINT
-# ──────────────────────────────────────────────────────────────────────────────
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="CSV → SQLite → SVD pipeline")

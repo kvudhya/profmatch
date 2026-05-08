@@ -19,7 +19,7 @@ from src.utils.utils import (
 
 MAX_POSTS_PER_PROFESSOR = 10
 SLEEP_SECONDS = 1.0
-
+#TO HARD TO GET ANY REAL CONTENT FROM GITHUB REPO(ABANDON SCRIPT for CONTENT based learning)
 
 @dataclass
 class RedditPostResult:

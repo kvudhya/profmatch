@@ -1,14 +1,4 @@
-#!/usr/bin/env python3
-"""
-professor_repo_and_practice_exam_finder_v2.py
 
-Changes from v1:
-- You can now use either:
-  1) --professors_csv path/to/file.csv
-  2) --professor_names "Name One,Name Two,Name Three"
-
-This avoids requiring a CSV if you already know the professor names.
-"""
 
 from __future__ import annotations
 

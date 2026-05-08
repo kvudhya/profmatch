@@ -1,26 +1,4 @@
-"""
-pipeline.py
------------
-Full pipeline: CSV → SQLite DB → SVD recommendations.
 
-Usage
------
-# Run with default paths (CSVs in ./Data/, DB as profmatch.db):
-    python pipeline.py
-
-# Custom paths:
-    python pipeline.py \
-        --ratings  Data/rutgers_cs_rmp_ratings.csv \
-        --reviews  Data/rutgers_cs_rmp_reviews.csv \
-        --db       profmatch.db \
-        --students 150 \
-        --sections 3 \
-        --extra    400 \
-        --demo-student 1
-
-The scraper (seleniumScrapingRating.py) must have already been run so the
-two CSV files exist before calling this script.
-"""
 
 import argparse
 import random
@@ -32,9 +10,7 @@ import pandas as pd
 from sklearn.decomposition import TruncatedSVD
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# 1.  TABLE CREATION
-# ──────────────────────────────────────────────────────────────────────────────
+#creating the table function.
 
 def create_tables(conn: sqlite3.Connection) -> None:
     """Drop-and-recreate the full schema."""
@@ -105,11 +81,8 @@ def create_tables(conn: sqlite3.Connection) -> None:
     print("[1/3] Tables created.")
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# 2.  DATA POPULATION
-# ──────────────────────────────────────────────────────────────────────────────
 
-# Fixed CS courses — course_id stability matters for readability only.
+
 COURSES = [
     (1,  "01:198:111", "Introduction to Computer Science"),
     (2,  "01:198:112", "Data Structures"),
@@ -132,9 +105,6 @@ def _generate_rating(prof_id: int, ratings_df: pd.DataFrame, reviews_df: pd.Data
                            distribution captured by the scraper.
     • ≤ 50 RMP reviews  →  sample from N(avg_quality, 1.0) so sparse profiles
                            stay realistic.
-
-    FIX vs. original: the original used `helpfulness_rating`, which was never
-    written by the scraper.  The correct column is `quality_rating`.
     """
     prof_data = ratings_df[ratings_df["section_id"] == prof_id]
 
@@ -168,7 +138,6 @@ def _generate_rating(prof_id: int, ratings_df: pd.DataFrame, reviews_df: pd.Data
 
 
 def _get_review_text(prof_id: int, reviews_df: pd.DataFrame, global_pool: list[str]) -> str:
-    """Return a real review for the professor; fall back to the global pool."""
     mask = (reviews_df["section_id"] == prof_id) & reviews_df["review_text"].notna()
     prof_reviews = reviews_df[mask]["review_text"].tolist()
 
@@ -185,9 +154,7 @@ def populate_database(
     sections_per_professor: int = 3,
     extra_synthetic_ratings: int = 400,
 ) -> None:
-    """
-    Read the two CSVs produced by seleniumScrapingRating.py and fill the DB.
-    """
+
     ratings_csv = Path(ratings_csv)
     reviews_csv = Path(reviews_csv)
 
@@ -300,9 +267,7 @@ def populate_database(
     print(f"      Ratings    : {rating_id - 1}")
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# 3.  SVD MODEL
-# ──────────────────────────────────────────────────────────────────────────────
+#Model class initally developed to use in accordance with content based learning.
 
 class ProfessorRecommender:
     """

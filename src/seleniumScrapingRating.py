@@ -23,9 +23,7 @@ REVIEWS_OUTPUT_FILE = "rutgers_cs_rmp_reviews.csv"
 RMP_SCHOOL_ID = 825  # found this by searching the HTML code
 
 
-# -------------------------
-# Selenium Setup Function
-# -------------------------
+#Selenium code(Start up)
 def init_webdriver():
     options = Options()
     options.add_argument("--headless")  # Runs in background (Required for smooth WSL execution)
@@ -40,9 +38,7 @@ def init_webdriver():
     return driver
 
 
-# -------------------------
-# Small helper functions
-# -------------------------
+#different from utils.py
 def safe_float(text, default=None):
     if text is None:
         return default
@@ -105,9 +101,7 @@ def search_rmp_professor(professor_name):
     return None
 
 
-# -------------------------
-# Step 3: Scrape professor page (Selenium Edition)
-# -------------------------
+
 def scrape_rmp_professor_page(driver, professor_url):
     driver.get(professor_url)
 
